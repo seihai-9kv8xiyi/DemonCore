@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Demon Core: Precision</title>
+    <title>Demon Core: Drag Control</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -22,14 +22,14 @@
         canvas {
             background: radial-gradient(circle, #2a3a2a, #000);
             border: 2px solid #555; box-shadow: 0 0 20px rgba(0,0,0,0.8);
-            cursor: ns-resize;
+            /* カーソルはJSで制御するのでここではauto */
+            cursor: auto; 
         }
         #ui { position: absolute; top: 10px; text-align: center; width: 100%; z-index: 20; pointer-events: none; }
         h1 { margin: 0; font-size: 18px; color: #888; letter-spacing: 2px; }
         
         #score-container { margin-top: 5px; }
         .label { font-size: 14px; color: #aaa; }
-        /* 文字サイズ調整 */
         #current-gap { font-size: 28px; font-weight: bold; color: #fff; letter-spacing: 1px; }
         #record-display { font-size: 36px; font-weight: bold; color: #0f0; text-shadow: 0 0 10px #0f0; letter-spacing: 1px; }
         .unit { font-size: 16px; color: #888; }
@@ -55,6 +55,13 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: white; opacity: 0; pointer-events: none; transition: opacity 0.1s; mix-blend-mode: screen; z-index: 15;
         }
+        
+        /* 操作ガイド */
+        #guide {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.5); font-size: 14px; pointer-events: none;
+            transition: opacity 0.5s;
+        }
     </style>
 </head>
 <body>
@@ -74,6 +81,7 @@
         </div>
     </div>
 
+    <div id="guide">DRAG THE UPPER SHELL</div>
     <div id="ranking-board">
         <div id="ranking-title">TOP 5 RECORDS (closest)</div>
         <div id="ranking-list">Loading...</div>
@@ -98,6 +106,7 @@
     const rankingBoard = document.getElementById('ranking-board');
     const rankingList = document.getElementById('ranking-list');
     const flashEl = document.getElementById('flash-overlay');
+    const guideEl = document.getElementById('guide');
 
     let gameState = {
         gap: 50.000,
@@ -107,7 +116,11 @@
         gameActive: true
     };
 
+    // ドラッグ制御用変数
+    let isDragging = false;
+    let dragOffsetY = 0; // マウスとオブジェクトの中心のズレ
     let targetGap = 50;
+
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2 + 50;
     const coreRadius = 60;
@@ -131,98 +144,219 @@
         osc.stop(audioCtx.currentTime + 0.03);
     }
 
-    // 操作
-    function handleInput(clientY) {
-        if (!gameState.gameActive) return;
-        const percent = Math.max(0, Math.min(1, clientY / window.innerHeight));
-        targetGap = percent * 120;
+    // --- マウス/タッチ操作ロジックの変更 ---
+
+    function getPointerPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        // Canvasのスケールに合わせて補正
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY
+        };
     }
-    document.addEventListener('mousemove', (e) => handleInput(e.clientY));
-    document.addEventListener('touchmove', (e) => { e.preventDefault(); handleInput(e.touches[0].clientY); }, { passive: false });
+
+    // ドラッグ開始
+    function onPointerDown(e) {
+        if (!gameState.gameActive) return;
+        
+        const pos = getPointerPos(e);
+        const shellY = centerY - gameState.gap;
+
+        // 半球（リフレクター）の上にマウスがあるか判定
+        // 中心からの距離で簡易判定
+        const dist = Math.sqrt(Math.pow(pos.x - centerX, 2) + Math.pow(pos.y - shellY, 2));
+
+        if (dist < shellRadius + 10) { // 少し判定を甘く(+10)して掴みやすく
+            isDragging = true;
+            // 掴んだ位置と、実際の半球の中心とのズレを記録（ガクつき防止）
+            dragOffsetY = pos.y - shellY;
+            guideEl.style.opacity = 0; // ガイドを消す
+            canvas.style.cursor = 'grabbing';
+            if(!audioCtx) playGeigerClick(); // 音出し開始
+        }
+    }
+
+    // ドラッグ中
+    function onPointerMove(e) {
+        const pos = getPointerPos(e);
+
+        // カーソル装飾（ホバー時）
+        if (!isDragging && gameState.gameActive) {
+            const shellY = centerY - gameState.gap;
+            const dist = Math.sqrt(Math.pow(pos.x - centerX, 2) + Math.pow(pos.y - shellY, 2));
+            if (dist < shellRadius + 10) {
+                canvas.style.cursor = 'grab';
+            } else {
+                canvas.style.cursor = 'default';
+            }
+        }
+
+        if (isDragging && gameState.gameActive) {
+            e.preventDefault(); // スマホでのスクロール防止
+            
+            // マウスの位置から、あるべき半球の位置(Y)を逆算
+            // ShellY = MouseY - Offset
+            const newShellY = pos.y - dragOffsetY;
+
+            // Gap = CenterY - ShellY
+            // これが新しい目標地点になる
+            targetGap = centerY - newShellY;
+
+            // 上に行き過ぎないように制限 (最大150mm)
+            if (targetGap > 150) targetGap = 150;
+            // 下に行き過ぎない（マイナスはupdateで判定して死ぬ）
+            if (targetGap < -5) targetGap = -5; 
+        }
+    }
+
+    // ドラッグ終了
+    function onPointerUp() {
+        isDragging = false;
+        canvas.style.cursor = 'grab';
+    }
+
+    // イベントリスナー登録
+    canvas.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+
+    canvas.addEventListener('touchstart', onPointerDown, {passive: false});
+    window.addEventListener('touchmove', onPointerMove, {passive: false});
+    window.addEventListener('touchend', onPointerUp);
+
 
     function update() {
         if (!gameState.gameActive) return;
 
+        // 手の震え計算
         let instability = 0;
-        if (gameState.gap < 20) instability = (20 - gameState.gap) * 0.05;
+        // 20mm以下から震え始め、近づくほど激しく
+        if (gameState.gap < 20) {
+            instability = (20 - gameState.gap) * 0.05; // 震え係数
+        }
+        
         const tremor = (Math.random() - 0.5) * instability;
         
-        // 物理更新
-        gameState.gap += (targetGap - gameState.gap) * 0.08 + tremor;
+        // 物理挙動：ターゲットに向かって動く + 震え
+        // ドラッグ中も少し「重み」を持たせるために即時反映ではなくイージングを入れる
+        gameState.gap += (targetGap - gameState.gap) * 0.2 + tremor;
 
-        // 【変更点】0.000以下になったら即死（0以下にはしない）
-        if (gameState.gap <= 0.00001) { 
-            // 0.001未満になったら、表示上は0.000になり接触扱い
+        // 死亡判定 (0.001以下)
+        if (gameState.gap <= 0.001) {
             gameState.gap = 0;
             triggerGameOver();
-            return; // ここで更新を止める
+            return;
         }
 
-        // 【変更点】生きていれば記録更新（接触してない時のみ更新）
+        // 記録更新
         if (gameState.gap < gameState.minRecord) {
             gameState.minRecord = gameState.gap;
         }
 
-        // 表示（小数点3桁）
-        currentGapEl.innerText = gameState.gap.toFixed(5);
-        recordEl.innerText = gameState.minRecord.toFixed(5);
+        // 表示更新
+        currentGapEl.innerText = gameState.gap.toFixed(3);
+        recordEl.innerText = gameState.minRecord.toFixed(3);
 
         // 色変化
-        if (gameState.minRecord < 1.000) recordEl.style.color = '#f0f'; // 1mm以下は紫
+        if (gameState.minRecord < 1.000) recordEl.style.color = '#f0f'; 
         else if (gameState.minRecord < 5.000) recordEl.style.color = '#ff0';
         else recordEl.style.color = '#0f0';
 
-        gameState.shaking = instability * 2;
-        if (Math.random() < Math.pow((60 - gameState.gap)/60, 4)) playGeigerClick();
+        // 画面揺れ
+        gameState.shaking = instability * 0.5;
+
+        // ガイガー音
+        if (Math.random() < Math.pow((60 - gameState.gap)/60, 4)) {
+            playGeigerClick();
+        }
     }
 
     function draw() {
         ctx.fillStyle = '#222';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         const shakeX = (Math.random() - 0.5) * gameState.shaking;
         const shakeY = (Math.random() - 0.5) * gameState.shaking;
         ctx.save();
         ctx.translate(shakeX, shakeY);
 
-        ctx.strokeStyle = '#aaa'; ctx.lineWidth = 8; ctx.beginPath();
+        // 1. ドライバー（ドラッグ版でも装飾として残すか、除去するか。今回は残す）
+        // 隙間に合わせてドライバーの位置も微調整
+        ctx.strokeStyle = '#aaa';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
         let driverY = centerY - (gameState.gap / 2); 
-        ctx.moveTo(centerX - 160, centerY + 10); ctx.lineTo(centerX - coreRadius + 5, driverY); ctx.stroke();
-        ctx.fillStyle = '#c44'; ctx.fillRect(centerX - 200, centerY, 40, 15);
+        ctx.moveTo(centerX - 160, centerY + 10); 
+        ctx.lineTo(centerX - coreRadius + 5, driverY); 
+        ctx.stroke();
+        ctx.fillStyle = '#c44';
+        ctx.fillRect(centerX - 200, centerY, 40, 15);
 
-        ctx.fillStyle = '#444'; ctx.fillRect(centerX - 50, centerY + coreRadius - 5, 100, 20);
-        ctx.beginPath(); ctx.arc(centerX, centerY, coreRadius, 0, Math.PI * 2);
+        // 2. コア（下）
+        ctx.fillStyle = '#444';
+        ctx.fillRect(centerX - 50, centerY + coreRadius - 5, 100, 20); 
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, coreRadius, 0, Math.PI * 2);
         const dangerLevel = Math.max(0, 20 - gameState.gap) / 20; 
         ctx.fillStyle = `rgb(${100 - dangerLevel*100}, ${100 - dangerLevel*50}, ${100 + dangerLevel*155})`;
-        ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fill();
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
+        // 3. 反射体（上） - これがドラッグ対象
         const shellY = centerY - gameState.gap;
-        ctx.beginPath(); ctx.arc(centerX, shellY, shellRadius, Math.PI, 0); 
-        ctx.fillStyle = '#bbb'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#888'; ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(centerX - shellRadius, shellY); ctx.lineTo(centerX + shellRadius, shellY);
-        ctx.strokeStyle = '#666'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(centerX, shellY, shellRadius, Math.PI, 0); 
+        
+        // ドラッグ中は少し明るくする
+        ctx.fillStyle = isDragging ? '#ccc' : '#bbb';
+        ctx.fill();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = isDragging ? '#fff' : '#888';
+        ctx.stroke();
 
+        // 断面
+        ctx.beginPath();
+        ctx.moveTo(centerX - shellRadius, shellY);
+        ctx.lineTo(centerX + shellRadius, shellY);
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 4. 青い光
         if (gameState.gap < 15) {
             const alpha = (15 - gameState.gap) / 15;
-            ctx.shadowBlur = 30; ctx.shadowColor = `rgba(100, 200, 255, ${alpha})`;
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = `rgba(100, 200, 255, ${alpha})`;
             ctx.fillStyle = `rgba(100, 200, 255, ${alpha * 0.3})`;
             ctx.globalCompositeOperation = 'lighter';
-            ctx.beginPath(); ctx.arc(centerX, centerY, coreRadius + 10, 0, Math.PI * 2); ctx.fill();
-            ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, coreRadius + 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowBlur = 0;
         }
+
         ctx.restore();
     }
 
     function triggerGameOver() {
         gameState.gameActive = false;
         gameState.isGameOver = true;
-        flashEl.style.opacity = 1; // 閃光
-        
-        currentGapEl.innerText = "0.00000"; // 強制的に0表示
+        isDragging = false; // ドラッグ強制解除
+        canvas.style.cursor = 'default';
+        guideEl.style.display = 'none';
+
+        flashEl.style.opacity = 1; 
+        currentGapEl.innerText = "0.000"; 
         
         msgEl.style.display = 'block';
-        // 接触時のメッセージ。記録は「直前の最小値」を表示
-        msgEl.innerHTML = `EXPERIMENT FAILED<br><span style="font-size:16px; color:white">CLOSEST SAFE DISTANCE: ${gameState.minRecord.toFixed(5)} mm</span>`;
+        msgEl.innerHTML = `EXPERIMENT FAILED<br><span style="font-size:16px; color:white">CLOSEST SAFE DISTANCE: ${gameState.minRecord.toFixed(3)} mm</span>`;
         
         inputArea.style.display = 'block';
         fetchRanking();
@@ -233,22 +367,13 @@
 
     async function submitScore() {
         const username = document.getElementById('username').value || "Unknown";
-        // 0.000 (接触) は送信させない、または直前のレコードを送る
-        // ここでは minRecord (接触直前の値) を送る
         const record = gameState.minRecord;
-
-        // もし何もしないで即死した場合など、レコードが大きすぎる場合は弾く
-        if(record > 49) {
-            alert("Too far to record!");
-            return;
-        }
+        if(record > 49) { alert("Too far to record!"); return; }
 
         document.querySelector('button').disabled = true;
         document.querySelector('button').innerText = "SENDING...";
 
-        const { error } = await _supabase
-            .from('scores')
-            .insert({ username: username, distance: record });
+        const { error } = await _supabase.from('scores').insert({ username: username, distance: record });
 
         if (error) {
             alert("Error: " + error.message);
@@ -269,12 +394,10 @@
         if (data) {
             let html = "";
             data.forEach((row, index) => {
-                // 色分け演出
                 let color = "#0f0";
-                if(row.distance < 0.500) color = "#f0f"; // 超接近
+                if(row.distance < 0.500) color = "#f0f"; 
                 else if(row.distance < 2.000) color = "#ff0";
-
-                html += `<div>${index + 1}. ${row.username}: <span style="color:${color}">${row.distance.toFixed(5)} mm</span></div>`;
+                html += `<div>${index + 1}. ${row.username}: <span style="color:${color}">${row.distance.toFixed(3)} mm</span></div>`;
             });
             rankingList.innerHTML = html;
         }
@@ -294,9 +417,3 @@
 </script>
 </body>
 </html>
-
-
-
-
-
-
