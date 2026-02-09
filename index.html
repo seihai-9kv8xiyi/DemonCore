@@ -151,7 +151,7 @@
         gameState.gap += (targetGap - gameState.gap) * 0.08 + tremor;
 
         // 【変更点】0.000以下になったら即死（0以下にはしない）
-        if (gameState.gap <= 0.001) { 
+        if (gameState.gap <= 0.00001) { 
             // 0.001未満になったら、表示上は0.000になり接触扱い
             gameState.gap = 0;
             triggerGameOver();
@@ -164,8 +164,8 @@
         }
 
         // 表示（小数点3桁）
-        currentGapEl.innerText = gameState.gap.toFixed(3);
-        recordEl.innerText = gameState.minRecord.toFixed(3);
+        currentGapEl.innerText = gameState.gap.toFixed(5);
+        recordEl.innerText = gameState.minRecord.toFixed(5);
 
         // 色変化
         if (gameState.minRecord < 1.000) recordEl.style.color = '#f0f'; // 1mm以下は紫
@@ -218,11 +218,11 @@
         gameState.isGameOver = true;
         flashEl.style.opacity = 1; // 閃光
         
-        currentGapEl.innerText = "0.000"; // 強制的に0表示
+        currentGapEl.innerText = "0.00000"; // 強制的に0表示
         
         msgEl.style.display = 'block';
         // 接触時のメッセージ。記録は「直前の最小値」を表示
-        msgEl.innerHTML = `EXPERIMENT FAILED<br><span style="font-size:16px; color:white">CLOSEST SAFE DISTANCE: ${gameState.minRecord.toFixed(3)} mm</span>`;
+        msgEl.innerHTML = `EXPERIMENT FAILED<br><span style="font-size:16px; color:white">CLOSEST SAFE DISTANCE: ${gameState.minRecord.toFixed(5)} mm</span>`;
         
         inputArea.style.display = 'block';
         fetchRanking();
@@ -274,7 +274,7 @@
                 if(row.distance < 0.500) color = "#f0f"; // 超接近
                 else if(row.distance < 2.000) color = "#ff0";
 
-                html += `<div>${index + 1}. ${row.username}: <span style="color:${color}">${row.distance.toFixed(3)} mm</span></div>`;
+                html += `<div>${index + 1}. ${row.username}: <span style="color:${color}">${row.distance.toFixed(5)} mm</span></div>`;
             });
             rankingList.innerHTML = html;
         }
@@ -294,3 +294,4 @@
 </script>
 </body>
 </html>
+
