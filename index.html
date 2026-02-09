@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Demon Core: Online Ranking</title>
+    <title>Demon Core: Precision</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -13,7 +13,6 @@
             align-items: center; justify-content: center; height: 100vh;
             user-select: none; touch-action: none;
         }
-        /* CRTモニター風エフェクト */
         body::after {
             content: " "; display: block; position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -30,21 +29,21 @@
         
         #score-container { margin-top: 5px; }
         .label { font-size: 14px; color: #aaa; }
-        #current-gap { font-size: 24px; font-weight: bold; color: #fff; }
-        #record-display { font-size: 32px; font-weight: bold; color: #0f0; text-shadow: 0 0 10px #0f0; }
+        /* 文字サイズ調整 */
+        #current-gap { font-size: 28px; font-weight: bold; color: #fff; letter-spacing: 1px; }
+        #record-display { font-size: 36px; font-weight: bold; color: #0f0; text-shadow: 0 0 10px #0f0; letter-spacing: 1px; }
         .unit { font-size: 16px; color: #888; }
 
-        /* ランキング表示エリア */
         #ranking-board {
             position: absolute; bottom: 10px; right: 10px;
             background: rgba(0, 0, 0, 0.8); border: 1px solid #444;
             padding: 10px; font-size: 12px; color: #ccc;
             pointer-events: none; z-index: 15; text-align: left;
-            display: none; /* 最初は隠す */
+            display: none;
         }
         #ranking-title { color: #f0f; font-weight: bold; border-bottom: 1px solid #f0f; margin-bottom: 5px; }
 
-        #message { margin-top: 10px; color: #ff3333; display: none; font-weight: bold; font-size: 20px; text-shadow: 0 0 5px #f00; }
+        #message { margin-top: 10px; color: #ff3333; display: none; font-weight: bold; font-size: 24px; text-shadow: 0 0 10px #f00; background: rgba(0,0,0,0.7); padding: 10px; }
         
         #input-area {
             pointer-events: auto; display: none; margin-top: 10px;
@@ -64,13 +63,14 @@
         <h1>PROJECT: TICKLING THE TAIL</h1>
         <div id="score-container">
             <div><span class="label">CURRENT:</span> <span id="current-gap">--</span> <span class="unit">mm</span></div>
-            <div><span class="label">MIN RECORD:</span> <span id="record-display">--</span> <span class="unit">mm</span></div>
+            <div><span class="label">CLOSEST:</span> <span id="record-display">--</span> <span class="unit">mm</span></div>
         </div>
-        <div id="message">CRITICALITY ACCIDENT</div>
+        <div id="message">CRITICALITY ACCIDENT<br><span style="font-size:16px; color:#fff">CONTACT DETECTED</span></div>
         
         <div id="input-area">
             <input type="text" id="username" placeholder="NAME" maxlength="10">
             <button onclick="submitScore()">SEND RECORD</button>
+            <div style="font-size: 10px; margin-top: 5px; color:#888;">Record before crash will be sent</div>
         </div>
     </div>
 
@@ -83,13 +83,12 @@
     <canvas id="gameCanvas" width="600" height="400"></canvas>
 
 <script>
-    // ▼▼▼ ここを書き換えてください ▼▼▼
+    // ▼▼▼ Supabase設定 ▼▼▼
     const supabaseUrl = 'https://ajssmfnjxulsoecxwkss.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqc3NtZm5qeHVsc29lY3h3a3NzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1NjY3NzEsImV4cCI6MjA4NjE0Mjc3MX0.LgX0_BbxP8hysXXq76vb7FQdl8dJBiAu-pXy4c6WdR0';
-    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
-
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const currentGapEl = document.getElementById('current-gap');
@@ -101,8 +100,8 @@
     const flashEl = document.getElementById('flash-overlay');
 
     let gameState = {
-        gap: 50.00,
-        minRecord: 50.00,
+        gap: 50.000,
+        minRecord: 50.000,
         isGameOver: false,
         shaking: 0,
         gameActive: true
@@ -114,7 +113,7 @@
     const coreRadius = 60;
     const shellRadius = 70;
 
-    // 音響 (簡易版)
+    // 音響
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx;
     function playGeigerClick() {
@@ -141,43 +140,36 @@
     document.addEventListener('mousemove', (e) => handleInput(e.clientY));
     document.addEventListener('touchmove', (e) => { e.preventDefault(); handleInput(e.touches[0].clientY); }, { passive: false });
 
-    // リトライボタン（ランキング送信後に押せるようにする）
-    function resetGame() {
-        gameState.gap = 50;
-        gameState.minRecord = 50;
-        gameState.isGameOver = false;
-        gameState.gameActive = true;
-        gameState.shaking = 0;
-        msgEl.style.display = 'none';
-        inputArea.style.display = 'none';
-        flashEl.style.opacity = 0;
-        recordEl.style.color = '#0f0';
-        rankingBoard.style.display = 'none';
-        loop();
-    }
-
     function update() {
         if (!gameState.gameActive) return;
 
         let instability = 0;
         if (gameState.gap < 20) instability = (20 - gameState.gap) * 0.15;
         const tremor = (Math.random() - 0.5) * instability;
+        
+        // 物理更新
         gameState.gap += (targetGap - gameState.gap) * 0.08 + tremor;
 
-        if (gameState.gap <= 0.0) {
+        // 【変更点】0.000以下になったら即死（0以下にはしない）
+        if (gameState.gap <= 0.001) { 
+            // 0.001未満になったら、表示上は0.000になり接触扱い
             gameState.gap = 0;
             triggerGameOver();
+            return; // ここで更新を止める
         }
 
-        if (gameState.gap > 0 && gameState.gap < gameState.minRecord) {
+        // 【変更点】生きていれば記録更新（接触してない時のみ更新）
+        if (gameState.gap < gameState.minRecord) {
             gameState.minRecord = gameState.gap;
         }
 
-        currentGapEl.innerText = gameState.gap.toFixed(2);
-        recordEl.innerText = gameState.minRecord.toFixed(2);
+        // 表示（小数点3桁）
+        currentGapEl.innerText = gameState.gap.toFixed(3);
+        recordEl.innerText = gameState.minRecord.toFixed(3);
 
-        if (gameState.minRecord < 5.00) recordEl.style.color = '#f0f';
-        else if (gameState.minRecord < 15.00) recordEl.style.color = '#ff0';
+        // 色変化
+        if (gameState.minRecord < 1.000) recordEl.style.color = '#f0f'; // 1mm以下は紫
+        else if (gameState.minRecord < 5.000) recordEl.style.color = '#ff0';
         else recordEl.style.color = '#0f0';
 
         gameState.shaking = instability * 2;
@@ -193,7 +185,6 @@
         ctx.save();
         ctx.translate(shakeX, shakeY);
 
-        // 描画ロジック（ドライバー、コア、反射体）
         ctx.strokeStyle = '#aaa'; ctx.lineWidth = 8; ctx.beginPath();
         let driverY = centerY - (gameState.gap / 2); 
         ctx.moveTo(centerX - 160, centerY + 10); ctx.lineTo(centerX - coreRadius + 5, driverY); ctx.stroke();
@@ -225,30 +216,36 @@
     function triggerGameOver() {
         gameState.gameActive = false;
         gameState.isGameOver = true;
-        flashEl.style.opacity = 1;
+        flashEl.style.opacity = 1; // 閃光
+        
+        currentGapEl.innerText = "0.000"; // 強制的に0表示
         
         msgEl.style.display = 'block';
-        msgEl.innerHTML = `EXPERIMENT FAILED<br><span style="font-size:16px; color:white">MIN GAP: ${gameState.minRecord.toFixed(2)} mm</span>`;
+        // 接触時のメッセージ。記録は「直前の最小値」を表示
+        msgEl.innerHTML = `EXPERIMENT FAILED<br><span style="font-size:16px; color:white">CLOSEST SAFE DISTANCE: ${gameState.minRecord.toFixed(3)} mm</span>`;
         
-        // 名前入力欄を表示
         inputArea.style.display = 'block';
-        fetchRanking(); // ゲームオーバー時に最新ランキングを取得して表示
+        fetchRanking();
         rankingBoard.style.display = 'block';
 
-        setTimeout(() => { flashEl.style.opacity = 0; }, 2000);
+        setTimeout(() => { flashEl.style.opacity = 0; }, 3000);
     }
-
-    // ▼ Supabase連携機能 ▼
 
     async function submitScore() {
         const username = document.getElementById('username').value || "Unknown";
+        // 0.000 (接触) は送信させない、または直前のレコードを送る
+        // ここでは minRecord (接触直前の値) を送る
         const record = gameState.minRecord;
 
-        // ボタンを無効化（連打防止）
+        // もし何もしないで即死した場合など、レコードが大きすぎる場合は弾く
+        if(record > 49) {
+            alert("Too far to record!");
+            return;
+        }
+
         document.querySelector('button').disabled = true;
         document.querySelector('button').innerText = "SENDING...";
 
-        // 送信
         const { error } = await _supabase
             .from('scores')
             .insert({ username: username, distance: record });
@@ -257,24 +254,27 @@
             alert("Error: " + error.message);
             document.querySelector('button').disabled = false;
         } else {
-            // 送信成功したらリロードでリセット（またはリセットボタンを表示）
             alert("Record Uploaded!");
             location.reload(); 
         }
     }
 
     async function fetchRanking() {
-        // 距離が短い順（昇順）に取得
         const { data, error } = await _supabase
             .from('scores')
             .select('*')
-            .order('distance', { ascending: true }) // 小さい方が偉い
+            .order('distance', { ascending: true })
             .limit(5);
 
         if (data) {
             let html = "";
             data.forEach((row, index) => {
-                html += `<div>${index + 1}. ${row.username}: <span style="color:#0f0">${row.distance.toFixed(2)} mm</span></div>`;
+                // 色分け演出
+                let color = "#0f0";
+                if(row.distance < 0.500) color = "#f0f"; // 超接近
+                else if(row.distance < 2.000) color = "#ff0";
+
+                html += `<div>${index + 1}. ${row.username}: <span style="color:${color}">${row.distance.toFixed(3)} mm</span></div>`;
             });
             rankingList.innerHTML = html;
         }
