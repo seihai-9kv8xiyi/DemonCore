@@ -246,7 +246,7 @@
         gameState.gap += (targetGap - gameState.gap) * 0.2 + tremor;
 
         // 死亡判定 (0.001以下)
-        if (gameState.gap <= 0.001) {
+        if (gameState.gap <= 0.00001) {
             gameState.gap = 0;
             triggerGameOver();
             return;
@@ -258,8 +258,8 @@
         }
 
         // 表示更新
-        currentGapEl.innerText = gameState.gap.toFixed(3);
-        recordEl.innerText = gameState.minRecord.toFixed(3);
+        currentGapEl.innerText = gameState.gap.toFixed(5);
+        recordEl.innerText = gameState.minRecord.toFixed(5);
 
         // 色変化
         if (gameState.minRecord < 1.000) recordEl.style.color = '#f0f'; 
@@ -353,10 +353,10 @@
         guideEl.style.display = 'none';
 
         flashEl.style.opacity = 1; 
-        currentGapEl.innerText = "0.000"; 
+        currentGapEl.innerText = "0.00000"; 
         
         msgEl.style.display = 'block';
-        msgEl.innerHTML = `EXPERIMENT FAILED<br><span style="font-size:16px; color:white">CLOSEST SAFE DISTANCE: ${gameState.minRecord.toFixed(3)} mm</span>`;
+        msgEl.innerHTML = `EXPERIMENT FAILED<br><span style="font-size:16px; color:white">CLOSEST SAFE DISTANCE: ${gameState.minRecord.toFixed(5)} mm</span>`;
         
         inputArea.style.display = 'block';
         fetchRanking();
@@ -397,7 +397,7 @@
                 let color = "#0f0";
                 if(row.distance < 0.500) color = "#f0f"; 
                 else if(row.distance < 2.000) color = "#ff0";
-                html += `<div>${index + 1}. ${row.username}: <span style="color:${color}">${row.distance.toFixed(3)} mm</span></div>`;
+                html += `<div>${index + 1}. ${row.username}: <span style="color:${color}">${row.distance.toFixed(5)} mm</span></div>`;
             });
             rankingList.innerHTML = html;
         }
@@ -417,3 +417,4 @@
 </script>
 </body>
 </html>
+
