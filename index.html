@@ -144,7 +144,7 @@
         if (!gameState.gameActive) return;
 
         let instability = 0;
-        if (gameState.gap < 20) instability = (20 - gameState.gap) * 0.15;
+        if (gameState.gap < 20) instability = (20 - gameState.gap) * 0.05;
         const tremor = (Math.random() - 0.5) * instability;
         
         // 物理更新
@@ -294,4 +294,5 @@
 </script>
 </body>
 </html>
+
 
